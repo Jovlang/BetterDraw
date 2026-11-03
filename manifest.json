@@ -1,0 +1,9 @@
+{
+  "id": "betterdraw",
+  "name": "BetterDraw",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "Sketch directly inside your notes.",
+  "author": "BetterDraw contributors",
+  "isDesktopOnly": false
+}

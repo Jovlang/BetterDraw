@@ -1,0 +1,23 @@
+.betterdraw {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.betterdraw-toolbar {
+  display: flex;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
+  background: var(--background-secondary);
+}
+
+.betterdraw canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  color: var(--text-normal);
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
