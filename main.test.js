@@ -154,11 +154,15 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
   assert.equal(writes, 1);
   assert.match(notices.at(-1), /could not save/);
   fail = false;
-  assert.deepEqual(copy.buttons.map((button) => button.icon), ["undo", "pencil", "eraser"]);
+  assert.deepEqual(copy.buttons.slice(0, 3).map((button) => button.icon), ["undo", "pencil", "eraser"]);
+  copy.buttons[3].value = "#d64545";
+  copy.buttons[4].value = "8";
   copy.canvas.pointerdown(point(30, 40));
   copy.canvas.pointerup(point(30, 40));
   await copy.view.drawing.pendingSave;
   assert.equal(writes, 2);
+  assert.match(contents.get(file), /stroke="#d64545" stroke-width="8"/);
+  assert.equal(codec.serialize(codec.parse(contents.get(file))), contents.get(file));
   assert.deepEqual(normalize(codec.parse(contents.get(file))), [[[30, 40]]]);
   copy.buttons[0].click();
   await copy.view.drawing.pendingSave;

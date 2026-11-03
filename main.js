@@ -5,6 +5,11 @@ const EMBED = ".internal-embed.image-embed[src]";
 const WIDTH = 800;
 const HEIGHT = 400;
 const INK = "#527ab8";
+const COLORS = [
+  ["Blue", INK], ["Black", "#222222"], ["White", "#ffffff"], ["Red", "#d64545"],
+  ["Orange", "#e68a24"], ["Yellow", "#d6b520"], ["Green", "#38965d"], ["Purple", "#9359c2"],
+];
+const THICKNESSES = [1, 3, 5, 8, 12];
 const SVG_START = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}">
   <g fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">`;
 const SVG_END = "  </g>\n</svg>";
@@ -15,7 +20,9 @@ function serialize(strokes) {
     const vertices = points.length === 1 ? [points[0], points[0]] : points;
     const path = vertices.map(([x, y], i) => `${i ? "L" : "M"} ${x} ${y}`).join(" ");
     const dot = points.length === 1 ? ' data-dot="true"' : "";
-    return `    <path d="${path}"${dot}/>\n`;
+    const color = points.color && points.color !== INK ? ` stroke="${points.color}"` : "";
+    const width = points.width && points.width !== 3 ? ` stroke-width="${points.width}"` : "";
+    return `    <path d="${path}"${color}${width}${dot}/>\n`;
   }).join("");
   return `${SVG_START}\n${paths}${SVG_END}\n`;
 }
@@ -32,19 +39,25 @@ function parse(svg) {
   const paths = text.slice(start.length, -SVG_END.length);
   if (!paths) return [];
   return paths.trimEnd().split("\n").map((line) => {
-    const match = /^    <path d="M (-?\d+ -?\d+(?: L -?\d+ -?\d+)+)"( data-dot="true")?\/>$/.exec(line);
+    const match = /^    <path d="M (-?\d+ -?\d+(?: L -?\d+ -?\d+)+)"(?: stroke="(#[a-f0-9]{6})")?(?: stroke-width="(\d+)")?( data-dot="true")?\/>$/.exec(line);
     if (!match) throw new Error("Invalid drawing path");
     const points = match[1].split(" L ").map((pair) => pair.split(" ").map(Number));
     if (!points.every((point) => point.every(Number.isSafeInteger))) {
       throw new Error("Invalid drawing coordinates");
     }
     const [first, second] = points;
-    if (match[2]) {
+    if ((match[2] && !COLORS.some(([, color]) => color === match[2])) ||
+        (match[3] && !THICKNESSES.includes(Number(match[3])))) {
+      throw new Error("Invalid stroke style");
+    }
+    if (match[4]) {
       if (points.length !== 2 || first[0] !== second[0] || first[1] !== second[1]) {
         throw new Error("Invalid drawing dot");
       }
-      return [first];
+      points.pop();
     }
+    if (match[2]) points.color = match[2];
+    if (match[3]) points.width = Number(match[3]);
     return points;
   });
 }
@@ -263,17 +276,15 @@ class DrawingView extends MarkdownRenderChild {
     const strokes = () => this.drawing.strokes;
     const paint = () => {
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      const color = INK;
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       for (const points of draft && gestureTool === "pencil" ? [...strokes(), draft] : strokes()) {
+        ctx.strokeStyle = ctx.fillStyle = points.color ?? INK;
+        ctx.lineWidth = points.width ?? 3;
         const [x, y] = points[0];
         ctx.beginPath();
         if (points.length === 1) {
-          ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+          ctx.arc(x, y, ctx.lineWidth / 2, 0, Math.PI * 2);
           ctx.fill();
           continue;
         }
@@ -319,6 +330,15 @@ class DrawingView extends MarkdownRenderChild {
     const eraser = button("eraser", "Eraser", () => selectTool("eraser"));
     selectTool("pencil");
 
+    const select = (label, options, value) => {
+      const control = toolbar.createEl("select", { attr: { title: label, "aria-label": label } });
+      for (const [text, value] of options) control.createEl("option", { text, value });
+      control.value = value;
+      return control;
+    };
+    const color = select("Color", COLORS, INK);
+    const thickness = select("Thickness", THICKNESSES.map((width) => [`${width} px`, String(width)]), "3");
+
     const erase = (samples) => {
       const radius = 10 * WIDTH / canvas.getBoundingClientRect().width;
       const indices = [];
@@ -331,7 +351,7 @@ class DrawingView extends MarkdownRenderChild {
           return samples.some(([sx, sy]) => {
             const projection = lengthSquared ? ((sx - px) * dx + (sy - py) * dy) / lengthSquared : 0;
             const t = Math.max(0, Math.min(1, projection));
-            return Math.hypot(sx - px - t * dx, sy - py - t * dy) <= radius;
+            return Math.hypot(sx - px - t * dx, sy - py - t * dy) <= radius + (stroke.width ?? 3) / 2;
           });
         });
         if (hit) indices.push(index);
@@ -354,6 +374,8 @@ class DrawingView extends MarkdownRenderChild {
       pointer = event.pointerId;
       gestureTool = tool;
       draft = [point(event)];
+      draft.color = color.value;
+      draft.width = Number(thickness.value);
       paint();
     });
     this.registerDomEvent(canvas, "pointermove", (event) => {
