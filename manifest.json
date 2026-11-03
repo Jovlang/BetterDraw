@@ -1,9 +1,9 @@
 {
   "id": "betterdraw",
   "name": "BetterDraw",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "minAppVersion": "1.5.0",
   "description": "Sketch directly inside your notes.",
-  "author": "BetterDraw contributors",
+  "author": "Jovlang",
   "isDesktopOnly": false
 }
