@@ -49,3 +49,11 @@
 .internal-embed.betterdraw-embed::after {
   display: none;
 }
+
+/* Obsidian can add vertical spacing on the wrapper around the embed. */
+.markdown-rendered p:has(> .betterdraw-embed:only-child),
+.markdown-source-view.is-live-preview .cm-embed-block:has(.betterdraw-embed),
+.markdown-source-view.is-live-preview .cm-line:has(> .betterdraw-embed:only-child) {
+  margin-block: 0;
+  padding-block: 0;
+}
