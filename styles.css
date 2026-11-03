@@ -12,6 +12,19 @@
   background: var(--background-secondary);
 }
 
+.betterdraw-toolbar button {
+  padding-inline: var(--size-4-2);
+}
+
+.betterdraw-toolbar button[aria-pressed="true"] {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.betterdraw canvas.betterdraw-erasing {
+  cursor: cell;
+}
+
 .betterdraw canvas {
   display: block;
   width: 100%;

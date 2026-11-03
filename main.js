@@ -1,4 +1,4 @@
-const { Plugin, MarkdownRenderChild, Notice, TFile, TFolder } = require("obsidian");
+const { Plugin, MarkdownRenderChild, Notice, TFile, TFolder, setIcon } = require("obsidian");
 
 const FOLDER = "BetterDraw";
 const EMBED = ".internal-embed.image-embed[src]";
@@ -257,6 +257,8 @@ class DrawingView extends MarkdownRenderChild {
     const ctx = canvas.getContext("2d");
     let pointer = null;
     let draft = null;
+    let tool;
+    let gestureTool;
 
     const strokes = () => this.drawing.strokes;
     const paint = () => {
@@ -267,7 +269,7 @@ class DrawingView extends MarkdownRenderChild {
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      for (const points of draft ? [...strokes(), draft] : strokes()) {
+      for (const points of draft && gestureTool === "pencil" ? [...strokes(), draft] : strokes()) {
         const [x, y] = points[0];
         ctx.beginPath();
         if (points.length === 1) {
@@ -287,19 +289,55 @@ class DrawingView extends MarkdownRenderChild {
       this.plugin.app.workspace.trigger("betterdraw:changed", this.drawing);
       this.plugin.saveDrawing(this.drawing);
     };
-    const button = (label, action) => {
-      const el = toolbar.createEl("button", { text: label, attr: { type: "button" } });
-      this.registerDomEvent(el, "click", action);
-    };
-    button("Undo stroke", () => {
-      const prefix = serialize(strokes());
-      const count = strokes().length;
-      if (!count) return;
-      update((current) => {
-        if (serialize(current.slice(0, count)) === prefix) current.splice(count - 1, 1);
+    const button = (icon, label, action) => {
+      const el = toolbar.createEl("button", {
+        attr: { type: "button", title: label, "aria-label": label },
       });
+      setIcon(el, icon);
+      this.registerDomEvent(el, "click", action);
+      return el;
+    };
+    const removeStrokes = (indices) => {
+      if (!indices.length) return;
+      const count = indices[indices.length - 1] + 1;
+      const prefix = serialize(strokes().slice(0, count));
+      update((current) => {
+        if (serialize(current.slice(0, count)) !== prefix) return;
+        for (const index of indices.slice().reverse()) current.splice(index, 1);
+      });
+    };
+    button("undo", "Undo stroke", () => {
+      if (strokes().length) removeStrokes([strokes().length - 1]);
     });
+    const selectTool = (next) => {
+      tool = next;
+      pencil.setAttribute("aria-pressed", String(tool === "pencil"));
+      eraser.setAttribute("aria-pressed", String(tool === "eraser"));
+      canvas.classList.toggle("betterdraw-erasing", tool === "eraser");
+    };
+    const pencil = button("pencil", "Pencil", () => selectTool("pencil"));
+    const eraser = button("eraser", "Eraser", () => selectTool("eraser"));
+    selectTool("pencil");
 
+    const erase = (samples) => {
+      const radius = 10 * WIDTH / canvas.getBoundingClientRect().width;
+      const indices = [];
+      strokes().forEach((stroke, index) => {
+        const hit = stroke.some(([x, y], i) => {
+          const [px, py] = stroke[Math.max(i - 1, 0)];
+          const dx = x - px;
+          const dy = y - py;
+          const lengthSquared = dx * dx + dy * dy;
+          return samples.some(([sx, sy]) => {
+            const projection = lengthSquared ? ((sx - px) * dx + (sy - py) * dy) / lengthSquared : 0;
+            const t = Math.max(0, Math.min(1, projection));
+            return Math.hypot(sx - px - t * dx, sy - py - t * dy) <= radius;
+          });
+        });
+        if (hit) indices.push(index);
+      });
+      removeStrokes(indices);
+    };
     const point = (event) => {
       const rect = canvas.getBoundingClientRect();
       return [
@@ -314,6 +352,7 @@ class DrawingView extends MarkdownRenderChild {
       event.stopPropagation();
       canvas.setPointerCapture(event.pointerId);
       pointer = event.pointerId;
+      gestureTool = tool;
       draft = [point(event)];
       paint();
     });
@@ -330,7 +369,8 @@ class DrawingView extends MarkdownRenderChild {
       const completed = draft;
       draft = null;
       pointer = null;
-      update((current) => current.push(completed));
+      if (gestureTool === "eraser") erase(completed);
+      else update((current) => current.push(completed));
     });
     const cancel = (event) => {
       if (event.pointerId !== pointer) return;

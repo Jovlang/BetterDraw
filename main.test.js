@@ -15,6 +15,8 @@ class Component {
 }
 class Element {
   children = [];
+  classList = { toggle() {} };
+  setAttribute(name, value) { this[name] = value; }
   createEl(tag, options = {}) {
     const child = Object.assign(new Element(), { tag, text: options.text });
     this.children.push(child);
@@ -49,6 +51,7 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
     MarkdownRenderChild: class extends Component {
       constructor(element) { super(); this.containerEl = element; }
     },
+    setIcon(element, icon) { element.icon = icon; },
     Notice: class { constructor(message) { notices.push(message); } },
   };
   const vault = Object.assign(new EventEmitter(), {
@@ -151,7 +154,7 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
   assert.equal(writes, 1);
   assert.match(notices.at(-1), /could not save/);
   fail = false;
-  assert.deepEqual(copy.buttons.map((button) => button.text), ["Undo stroke"]);
+  assert.deepEqual(copy.buttons.map((button) => button.icon), ["undo", "pencil", "eraser"]);
   copy.canvas.pointerdown(point(30, 40));
   copy.canvas.pointerup(point(30, 40));
   await copy.view.drawing.pendingSave;
@@ -168,6 +171,13 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
   vault.emit("modify", file);
   await first.view.drawing.pendingSave;
   assert.deepEqual(normalize(codec.parse(contents.get(file))), [[[70, 80]], [[50, 60]]]);
+  copy.buttons[2].click();
+  copy.canvas.pointerdown(point(50, 60));
+  copy.canvas.pointerup(point(50, 60));
+  await copy.view.drawing.pendingSave;
+  assert.deepEqual(normalize(codec.parse(contents.get(file))), [[[70, 80]]]);
+  copy.buttons[1].click();
+  assert.equal(copy.buttons[1]["aria-pressed"], "true");
 
   assert.match((await render("BetterDraw/missing.svg")).root.text, /missing/);
   assert.match((await render("../outside.svg")).root.text, /vault-relative/);
