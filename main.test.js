@@ -138,9 +138,15 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
   assert.equal(writes, 1);
   assert.match(notices.at(-1), /could not save/);
   fail = false;
-  copy.buttons[1].click();
+  assert.deepEqual(copy.buttons.map((button) => button.text), ["Undo stroke"]);
+  copy.canvas.pointerdown(point(30, 40));
+  copy.canvas.pointerup(point(30, 40));
   await copy.view.drawing.pendingSave;
   assert.equal(writes, 2);
+  assert.deepEqual(normalize(codec.parse(contents.get(file))), [[[30, 40]]]);
+  copy.buttons[0].click();
+  await copy.view.drawing.pendingSave;
+  assert.equal(writes, 3);
   assert.deepEqual(normalize(codec.parse(contents.get(file))), []);
 
   assert.match((await render("BetterDraw/missing.svg")).root.text, /missing/);

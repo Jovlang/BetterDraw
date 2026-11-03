@@ -170,7 +170,7 @@ module.exports = class BetterDraw extends Plugin {
         drawing.svg = svg;
         drawing.dirty = drawing.strokes !== strokes;
       } catch {
-        new Notice("BetterDraw could not save this SVG. Use Save to retry.");
+        new Notice("BetterDraw could not save this SVG. The next edit will retry.");
       }
     });
     return drawing.pendingSave;
@@ -231,7 +231,6 @@ class DrawingView extends MarkdownRenderChild {
     button("Undo stroke", () => {
       if (strokes().length) update(strokes().slice(0, -1));
     });
-    button("Save", () => this.plugin.saveDrawing(this.drawing));
 
     const point = (event) => {
       const rect = canvas.getBoundingClientRect();

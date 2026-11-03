@@ -14,8 +14,7 @@ under **Settings > Community plugins**. There is no build step.
 1. Open a note in Live Preview and run **BetterDraw: Insert drawing** from
    the command palette.
 2. Draw in the inline canvas. Each completed stroke saves automatically.
-3. Use **Undo stroke** to remove the last stroke. Use **Save** to retry
-   after a save error.
+3. Use **Undo stroke** to remove the last stroke.
 
 Drawings also work in Reading view. Each drawing is an ordinary SVG in the
 vault's `BetterDraw/` folder. Its BetterDraw block references the file by path.
