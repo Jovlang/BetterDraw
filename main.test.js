@@ -15,6 +15,7 @@ class Component {
 }
 class Element {
   children = [];
+  style = {};
   classList = { toggle() {} };
   setAttribute(name, value) { this[name] = value; }
   createEl(tag, options = {}) {
@@ -155,8 +156,14 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
   assert.match(notices.at(-1), /could not save/);
   fail = false;
   assert.deepEqual(copy.buttons.slice(0, 3).map((button) => button.icon), ["undo", "pencil", "eraser"]);
-  copy.buttons[3].value = "#d64545";
-  copy.buttons[4].value = "8";
+  const [swatch, color] = copy.buttons[3].children;
+  color.value = "#d64545";
+  color.change();
+  assert.equal(swatch.style.backgroundColor, "#d64545");
+  const [widthSample, thickness] = copy.buttons[4].children;
+  thickness.value = "8";
+  thickness.change();
+  assert.equal(widthSample.style.height, "8px");
   copy.canvas.pointerdown(point(30, 40));
   copy.canvas.pointerup(point(30, 40));
   await copy.view.drawing.pendingSave;

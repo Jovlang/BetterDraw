@@ -330,15 +330,21 @@ class DrawingView extends MarkdownRenderChild {
     const eraser = button("eraser", "Eraser", () => selectTool("eraser"));
     selectTool("pencil");
 
-    const select = (label, options, value) => {
-      const control = toolbar.createEl("select", { attr: { title: label, "aria-label": label } });
+    const select = (label, options, value, previewClass, updatePreview) => {
+      const wrapper = toolbar.createEl("label", { cls: "betterdraw-style-picker" });
+      const preview = wrapper.createEl("span", { cls: previewClass, attr: { "aria-hidden": "true" } });
+      const control = wrapper.createEl("select", { attr: { title: label, "aria-label": label } });
       for (const [text, value] of options) control.createEl("option", { text, value });
       control.value = value;
+      const refresh = () => updatePreview(preview.style, control.value);
+      this.registerDomEvent(control, "change", refresh);
+      refresh();
       return control;
     };
-    const color = select("Color", COLORS, INK);
-    const thickness = select("Thickness", THICKNESSES.map((width) => [`${width} px`, String(width)]), "3");
-
+    const color = select("Color", COLORS, INK, "betterdraw-color-swatch",
+      (style, value) => { style.backgroundColor = value; });
+    const thickness = select("Thickness", THICKNESSES.map((width) => [`${width} px`, String(width)]),
+      "3", "betterdraw-width-sample", (style, value) => { style.height = `${value}px`; });
     const erase = (samples) => {
       const radius = 10 * WIDTH / canvas.getBoundingClientRect().width;
       const indices = [];
