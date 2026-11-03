@@ -16,8 +16,13 @@
   display: block;
   width: 100%;
   height: auto;
-  color: var(--text-normal);
   cursor: crosshair;
   touch-action: none;
   user-select: none;
+}
+
+/* The native image remains available when the plugin stylesheet is unloaded. */
+.markdown-rendered img[alt="BetterDraw fallback"],
+.markdown-source-view.is-live-preview img[alt="BetterDraw fallback"] {
+  display: none;
 }

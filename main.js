@@ -1,49 +1,187 @@
-const { Plugin, MarkdownRenderChild, Notice } = require("obsidian");
+const { Plugin, MarkdownRenderChild, Notice, TFile, TFolder } = require("obsidian");
 
+const FOLDER = "BetterDraw";
 const WIDTH = 800;
 const HEIGHT = 400;
-const ID = /^[0-9a-f]{32}$/;
+const INK = "#527ab8";
+const SVG_START = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}">
+  <g fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">`;
+const SVG_END = "  </g>\n</svg>";
+
+function serialize(strokes) {
+  const paths = strokes.map((points) => {
+    // A zero-length round-capped segment renders a single tap as a dot.
+    const vertices = points.length === 1 ? [points[0], points[0]] : points;
+    const path = vertices.map(([x, y], i) => `${i ? "L" : "M"} ${x} ${y}`).join(" ");
+    const dot = points.length === 1 ? ' data-dot="true"' : "";
+    return `    <path d="${path}"${dot}/>\n`;
+  }).join("");
+  return `${SVG_START}\n${paths}${SVG_END}\n`;
+}
+
+function parse(svg) {
+  const text = svg.trim().replace(/\r\n/g, "\n");
+  const start = SVG_START + "\n";
+  if (!text.startsWith(start) || !text.endsWith(SVG_END)) {
+    throw new Error("Unsupported drawing SVG");
+  }
+
+  // Accept only the editable subset we write, so saving cannot discard
+  // unsupported SVG elements, attributes, or path commands.
+  const paths = text.slice(start.length, -SVG_END.length);
+  if (!paths) return [];
+  return paths.trimEnd().split("\n").map((line) => {
+    const match = /^    <path d="M (-?\d+ -?\d+(?: L -?\d+ -?\d+)+)"( data-dot="true")?\/>$/.exec(line);
+    if (!match) throw new Error("Invalid drawing path");
+    const points = match[1].split(" L ").map((pair) => pair.split(" ").map(Number));
+    if (!points.every((point) => point.every(Number.isSafeInteger))) {
+      throw new Error("Invalid drawing coordinates");
+    }
+    const [first, second] = points;
+    if (match[2]) {
+      if (points.length !== 2 || first[0] !== second[0] || first[1] !== second[1]) {
+        throw new Error("Invalid drawing dot");
+      }
+      return [first];
+    }
+    return points;
+  });
+}
+
+function isDrawingPath(path) {
+  return /\.svg$/i.test(path) && !/[\\:\[\]\x00-\x1f]/.test(path) &&
+    path.split("/").every((part) => part && part !== "." && part !== "..");
+}
 
 module.exports = class BetterDraw extends Plugin {
-  async onload() {
-    this.drawings = (await this.loadData()) ?? {};
-    this.pendingSave = Promise.resolve();
+  onload() {
+    this.drawings = new WeakMap();
+    this.registerEvent(this.app.vault.on("modify", (file) => this.refreshDrawing(file)));
     this.addCommand({
       id: "insert-drawing",
       name: "Insert drawing",
-      editorCallback: (editor) => {
-        const bytes = window.crypto.getRandomValues(new Uint8Array(16));
-        const id = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-        const cursor = editor.getCursor("to");
-        const end = { line: cursor.line, ch: editor.getLine(cursor.line).length };
-        editor.replaceRange("\n\n```betterdraw\n" + id + "\n```\n\n", end);
-        editor.setCursor(end.line + 6, 0);
-      },
+      editorCallback: (editor, view) => this.insertDrawing(editor, view),
     });
 
-    this.registerMarkdownCodeBlockProcessor("betterdraw", (source, element, context) => {
-      const id = source.trim();
-      if (!ID.test(id)) {
-        element.setText("Use the BetterDraw: Insert drawing command to create a drawing.");
+    this.registerMarkdownCodeBlockProcessor("betterdraw", async (source, element, context) => {
+      const path = source.trim();
+      if (!isDrawingPath(path)) {
+        element.setText("BetterDraw needs a vault-relative SVG path.");
         return;
       }
-      context.addChild(new DrawingView(element, this, id));
+
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (!(file instanceof TFile)) {
+        element.setText("BetterDraw SVG is missing.");
+        return;
+      }
+
+      try {
+        const drawing = await this.openDrawing(file);
+        context.addChild(new DrawingView(element, this, drawing));
+      } catch {
+        element.setText("BetterDraw could not read this SVG.");
+      }
     });
   }
 
-  saveDrawing(id, strokes) {
-    this.drawings[id] = strokes;
-    this.pendingSave = this.pendingSave
-      .then(() => this.saveData(this.drawings))
-      .catch(() => new Notice("BetterDraw could not save. Use Save to retry."));
+  async insertDrawing(editor, view) {
+    const vault = this.app.vault;
+    const note = view.file;
+    try {
+      if (!vault.getAbstractFileByPath(FOLDER)) {
+        try {
+          await vault.createFolder(FOLDER);
+        } catch (error) {
+          if (!(vault.getAbstractFileByPath(FOLDER) instanceof TFolder)) throw error;
+        }
+      }
+      if (!(vault.getAbstractFileByPath(FOLDER) instanceof TFolder)) {
+        throw new Error("Drawing folder is unavailable");
+      }
+
+      let path;
+      do {
+        const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+        const id = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        path = `${FOLDER}/${id}.svg`;
+      } while (vault.getAbstractFileByPath(path));
+      await vault.create(path, serialize([]));
+
+      if (view.file !== note) {
+        new Notice(`BetterDraw created ${path}. The original note is no longer open.`);
+        return;
+      }
+      const cursor = editor.getCursor("to");
+      const end = { line: cursor.line, ch: editor.getLine(cursor.line).length };
+      const block = "\n\n```betterdraw\n" + path + "\n```\n\n";
+      const fallback = `![BetterDraw fallback](${path})\n\n`;
+      editor.replaceRange(block + fallback, end);
+      editor.setCursor(end.line + 8, 0);
+    } catch {
+      new Notice("BetterDraw could not create a drawing.");
+    }
+  }
+
+  openDrawing(file) {
+    if (!this.drawings.has(file)) {
+      const opening = this.app.vault.read(file).then((svg) => ({
+        file, svg, strokes: parse(svg), dirty: false, pendingSave: Promise.resolve(),
+      })).catch((error) => {
+        this.drawings.delete(file);
+        throw error;
+      });
+      this.drawings.set(file, opening);
+    }
+    return this.drawings.get(file);
+  }
+
+  async refreshDrawing(file) {
+    const opening = this.drawings.get(file);
+    if (!opening) return;
+    const drawing = await opening.catch(() => null);
+    if (!drawing) return;
+    drawing.pendingSave = drawing.pendingSave.then(async () => {
+      try {
+        if (drawing.dirty) return;
+        const svg = await this.app.vault.read(file);
+        if (drawing.dirty || svg === drawing.svg) return;
+        drawing.strokes = parse(svg);
+        drawing.svg = svg;
+        this.app.workspace.trigger("betterdraw:changed", drawing);
+      } catch {
+        new Notice("BetterDraw could not reload this SVG.");
+      }
+    });
+  }
+
+
+  saveDrawing(drawing) {
+    drawing.pendingSave = drawing.pendingSave.then(async () => {
+      const strokes = drawing.strokes;
+      const svg = serialize(strokes);
+      if (!drawing.dirty) return;
+      const vault = this.app.vault;
+      try {
+        await vault.process(drawing.file, (current) => {
+          if (current !== drawing.svg) throw new Error("Drawing changed on disk");
+          return svg;
+        });
+        drawing.svg = svg;
+        drawing.dirty = drawing.strokes !== strokes;
+      } catch {
+        new Notice("BetterDraw could not save this SVG. Use Save to retry.");
+      }
+    });
+    return drawing.pendingSave;
   }
 };
 
 class DrawingView extends MarkdownRenderChild {
-  constructor(element, plugin, id) {
+  constructor(element, plugin, drawing) {
     super(element);
     this.plugin = plugin;
-    this.id = id;
+    this.drawing = drawing;
   }
 
   onload() {
@@ -57,10 +195,10 @@ class DrawingView extends MarkdownRenderChild {
     let pointer = null;
     let draft = null;
 
-    const strokes = () => this.plugin.drawings[this.id] ?? [];
+    const strokes = () => this.drawing.strokes;
     const paint = () => {
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      const color = canvas.ownerDocument.defaultView.getComputedStyle(canvas).color;
+      const color = INK;
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.lineWidth = 3;
@@ -81,8 +219,10 @@ class DrawingView extends MarkdownRenderChild {
     };
 
     const update = (next) => {
-      this.plugin.saveDrawing(this.id, next);
-      this.plugin.app.workspace.trigger("betterdraw:changed", this.id);
+      this.drawing.strokes = next;
+      this.drawing.dirty = true;
+      this.plugin.app.workspace.trigger("betterdraw:changed", this.drawing);
+      this.plugin.saveDrawing(this.drawing);
     };
     const button = (label, action) => {
       const el = toolbar.createEl("button", { text: label, attr: { type: "button" } });
@@ -91,7 +231,7 @@ class DrawingView extends MarkdownRenderChild {
     button("Undo stroke", () => {
       if (strokes().length) update(strokes().slice(0, -1));
     });
-    button("Save", () => this.plugin.saveDrawing(this.id, strokes()));
+    button("Save", () => this.plugin.saveDrawing(this.drawing));
 
     const point = (event) => {
       const rect = canvas.getBoundingClientRect();
@@ -125,16 +265,17 @@ class DrawingView extends MarkdownRenderChild {
       pointer = null;
       update(next);
     });
-    this.registerDomEvent(canvas, "lostpointercapture", (event) => {
+    const cancel = (event) => {
       if (event.pointerId !== pointer) return;
       draft = null;
       pointer = null;
       paint();
-    });
-    this.registerEvent(this.plugin.app.workspace.on("betterdraw:changed", (id) => {
-      if (id === this.id) paint();
+    };
+    this.registerDomEvent(canvas, "pointercancel", cancel);
+    this.registerDomEvent(canvas, "lostpointercapture", cancel);
+    this.registerEvent(this.plugin.app.workspace.on("betterdraw:changed", (drawing) => {
+      if (drawing === this.drawing) paint();
     }));
-    this.registerEvent(this.plugin.app.workspace.on("css-change", paint));
     paint();
   }
 }

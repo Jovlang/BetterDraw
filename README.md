@@ -17,7 +17,17 @@ under **Settings > Community plugins**. There is no build step.
 3. Use **Undo stroke** to remove the last stroke. Use **Save** to retry
    after a save error.
 
-Drawings also work in Reading view. Source mode shows the Markdown block
-and its drawing ID. Copying the block within a vault displays the same
-drawing. Moving a note to another vault requires copying the matching
-drawing data from the plugin folder's `data.json`.
+Drawings also work in Reading view. Each drawing is an ordinary SVG in the
+vault's `BetterDraw/` folder. Its BetterDraw block references the file by path.
+Copying the block references the same drawing, so edits appear in both places.
+Keep the adjacent Markdown image if you want a copy of the block to stay
+visible when BetterDraw is disabled.
+
+Include the SVG files when backing up, syncing, or exporting your vault.
+Removing a reference leaves the SVG in the vault.
+
+Drawings created by the ID-based prototype are not migrated automatically.
+
+## Tests
+
+Run `node --test` from the repository folder.
