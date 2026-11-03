@@ -26,3 +26,12 @@
 .markdown-source-view.is-live-preview img[alt="BetterDraw fallback"] {
   display: none;
 }
+
+.internal-embed.betterdraw-embed {
+  display: block;
+  width: 100%;
+}
+
+.internal-embed.betterdraw-embed img {
+  display: none;
+}

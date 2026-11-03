@@ -10,6 +10,7 @@ class TFile {
 class TFolder {}
 class Component {
   registerEvent() {}
+  load() { this.onload(); }
   registerDomEvent(element, name, callback) { element[name] = callback; }
 }
 class Element {
@@ -70,6 +71,7 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
   });
   const workspace = new EventEmitter();
   workspace.trigger = workspace.emit;
+  workspace.onLayoutReady = () => {};
 
   const module = {};
   const codec = runInNewContext(
@@ -100,11 +102,10 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
     setCursor() {},
   };
   await plugin.insert(editor, { file: new TFile("note.md") });
-  const [, path] = /```betterdraw\n(BetterDraw\/[a-f0-9]{32}\.svg)\n```/.exec(markdown);
+  const [, path] = /^\s*!\[\[(BetterDraw\/[a-f0-9]{32}\.svg)\]\]\s*$/.exec(markdown);
   const file = files.get(path);
   assert.ok(file instanceof TFile);
   assert.ok(files.get("BetterDraw") instanceof TFolder);
-  assert.ok(markdown.includes(`![BetterDraw fallback](${path})`));
   assert.deepEqual(normalize(codec.parse(contents.get(file))), []);
 
   const render = async (source, instance = plugin) => {
@@ -114,7 +115,18 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
     return { root, view, canvas: root.children[1], buttons: root.children[0]?.children };
   };
   const first = await render(path);
-  const copy = await render(path);
+  const host = new Element();
+  host.isConnected = true;
+  host.getAttribute = () => path;
+  host.classList = new Set();
+  const mount = { path };
+  await plugin.mountEmbed(host, mount, () => true);
+  assert.ok(host.classList.has("betterdraw-embed"));
+  const copy = {
+    view: mount.view,
+    canvas: mount.root.children[1],
+    buttons: mount.root.children[0].children,
+  };
   assert.equal(files.size, 2);
   assert.equal(first.view.drawing, copy.view.drawing);
   const point = (x, y) => ({

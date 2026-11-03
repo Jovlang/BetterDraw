@@ -17,10 +17,10 @@ under **Settings > Community plugins**. There is no build step.
 3. Use **Undo stroke** to remove the last stroke.
 
 Drawings also work in Reading view. Each drawing is an ordinary SVG in the
-vault's `BetterDraw/` folder. Its BetterDraw block references the file by path.
-Copying the block references the same drawing, so edits appear in both places.
-Keep the adjacent Markdown image if you want a copy of the block to stay
-visible when BetterDraw is disabled.
+vault's `BetterDraw/` folder. New drawings use a standard Obsidian image
+embed such as `![[BetterDraw/example.svg]]`. Copying the embed references
+the same drawing. With BetterDraw disabled, Obsidian displays the SVG
+as an ordinary image. Existing path-based BetterDraw blocks still work.
 
 Include the SVG files when backing up, syncing, or exporting your vault.
 Removing a reference leaves the SVG in the vault.

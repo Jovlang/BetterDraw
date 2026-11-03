@@ -1,6 +1,7 @@
 const { Plugin, MarkdownRenderChild, Notice, TFile, TFolder } = require("obsidian");
 
 const FOLDER = "BetterDraw";
+const EMBED = ".internal-embed.image-embed[src]";
 const WIDTH = 800;
 const HEIGHT = 400;
 const INK = "#527ab8";
@@ -56,6 +57,8 @@ function isDrawingPath(path) {
 module.exports = class BetterDraw extends Plugin {
   onload() {
     this.drawings = new WeakMap();
+    this.app.workspace.onLayoutReady(() => this.watchEmbeds(document));
+    this.registerEvent(this.app.workspace.on("window-open", (_, win) => this.watchEmbeds(win.document)));
     this.registerEvent(this.app.vault.on("modify", (file) => this.refreshDrawing(file)));
     this.addCommand({
       id: "insert-drawing",
@@ -83,6 +86,65 @@ module.exports = class BetterDraw extends Plugin {
         element.setText("BetterDraw could not read this SVG.");
       }
     });
+  }
+
+  watchEmbeds(doc) {
+    const mounts = new Map();
+    const remove = (host, mount) => {
+      mounts.delete(host);
+      mount.view?.unload();
+      mount.root?.remove();
+      host.classList.remove("betterdraw-embed");
+    };
+    const scan = (node) => {
+      if (node.nodeType !== 1) return;
+      const attach = (host) => {
+        if (mounts.has(host) || host.querySelector('img[alt="BetterDraw fallback"]')) return;
+        const path = host.getAttribute("src");
+        if (!path.startsWith(FOLDER + "/") || !isDrawingPath(path)) return;
+        const mount = { path };
+        mounts.set(host, mount);
+        this.mountEmbed(host, mount, () => mounts.get(host) === mount);
+      };
+      if (node.matches(EMBED)) attach(node);
+      node.querySelectorAll(EMBED).forEach(attach);
+    };
+    const observer = new doc.defaultView.MutationObserver((changes) => {
+      for (const [host, mount] of mounts) {
+        if (!host.isConnected || host.getAttribute("src") !== mount.path ||
+            (mount.root && mount.root.parentNode !== host)) remove(host, mount);
+      }
+      for (const change of changes) {
+        if (change.target.nodeType === 1 && change.target.matches(EMBED)) scan(change.target);
+        for (const node of change.addedNodes) scan(node);
+      }
+    });
+    observer.observe(doc.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["src"] });
+    const stop = () => {
+      observer.disconnect();
+      for (const [host, mount] of mounts) remove(host, mount);
+    };
+    this.register(stop);
+    doc.defaultView.addEventListener("pagehide", stop, { once: true });
+    this.register(() => doc.defaultView?.removeEventListener("pagehide", stop));
+    scan(doc.body);
+  }
+
+  async mountEmbed(host, mount, isCurrent) {
+    const file = this.app.vault.getAbstractFileByPath(mount.path);
+    if (!(file instanceof TFile)) return;
+    let drawing;
+    try {
+      drawing = await this.openDrawing(file);
+    } catch {
+      // Other SVGs retain their native image rendering.
+      return;
+    }
+    if (!isCurrent() || !host.isConnected || host.getAttribute("src") !== mount.path) return;
+    mount.root = host.createDiv({ cls: "betterdraw-embed-editor" });
+    mount.view = new DrawingView(mount.root, this, drawing);
+    mount.view.load();
+    host.classList.add("betterdraw-embed");
   }
 
   async insertDrawing(editor, view) {
@@ -114,10 +176,8 @@ module.exports = class BetterDraw extends Plugin {
       }
       const cursor = editor.getCursor("to");
       const end = { line: cursor.line, ch: editor.getLine(cursor.line).length };
-      const block = "\n\n```betterdraw\n" + path + "\n```\n\n";
-      const fallback = `![BetterDraw fallback](${path})\n\n`;
-      editor.replaceRange(block + fallback, end);
-      editor.setCursor(end.line + 8, 0);
+      editor.replaceRange(`\n\n![[${path}]]\n\n`, end);
+      editor.setCursor(end.line + 4, 0);
     } catch {
       new Notice("BetterDraw could not create a drawing.");
     }
