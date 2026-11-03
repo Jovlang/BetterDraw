@@ -265,7 +265,7 @@ class DrawingView extends MarkdownRenderChild {
     root.addClass("betterdraw");
     const toolbar = root.createDiv({ cls: "betterdraw-toolbar" });
     const canvas = root.createEl("canvas", {
-      attr: { width: WIDTH, height: HEIGHT, "aria-label": "Freehand drawing" },
+      attr: { width: WIDTH, height: HEIGHT },
     });
     const ctx = canvas.getContext("2d");
     let pointer = null;
