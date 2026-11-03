@@ -29,10 +29,20 @@
 
 .internal-embed.betterdraw-embed {
   display: block;
+  position: relative;
   width: 100%;
 }
 
-.internal-embed.betterdraw-embed > :not(.betterdraw-embed-editor),
+/* Keep the native image measurable without taking up space in the note. */
+.internal-embed.betterdraw-embed > img,
+.internal-embed.betterdraw-embed > :not(.betterdraw-embed-editor):has(img) {
+  position: absolute;
+  inset: 0 auto auto 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.internal-embed.betterdraw-embed > :not(.betterdraw-embed-editor, img, :has(img)),
 .internal-embed.betterdraw-embed::before,
 .internal-embed.betterdraw-embed::after {
   display: none;
