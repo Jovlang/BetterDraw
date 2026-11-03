@@ -32,6 +32,8 @@
   width: 100%;
 }
 
-.internal-embed.betterdraw-embed img {
+.internal-embed.betterdraw-embed > :not(.betterdraw-embed-editor),
+.internal-embed.betterdraw-embed::before,
+.internal-embed.betterdraw-embed::after {
   display: none;
 }
