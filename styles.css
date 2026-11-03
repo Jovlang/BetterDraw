@@ -35,6 +35,13 @@
   padding-block: 0;
 }
 
+/* Live Preview places the embed inside an editor line. A block here can
+   split the surrounding inline wrappers into line boxes above and below. */
+.markdown-source-view.is-live-preview .cm-line .betterdraw-embed {
+  display: inline-block;
+  vertical-align: top;
+}
+
 /* Keep the native image measurable without taking up space in the note. */
 .internal-embed.betterdraw-embed > img,
 .internal-embed.betterdraw-embed > :not(.betterdraw-embed-editor):has(img) {
@@ -53,7 +60,7 @@
 /* Obsidian can add vertical spacing on the wrapper around the embed. */
 .markdown-rendered p:has(> .betterdraw-embed:only-child),
 .markdown-source-view.is-live-preview .cm-embed-block:has(.betterdraw-embed),
-.markdown-source-view.is-live-preview .cm-line:has(> .betterdraw-embed:only-child) {
+.markdown-source-view.is-live-preview .cm-line:has(.betterdraw-embed) {
   margin-block: 0;
   padding-block: 0;
 }
