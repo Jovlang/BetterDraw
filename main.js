@@ -126,7 +126,7 @@ module.exports = class BetterDraw extends Plugin {
   openDrawing(file) {
     if (!this.drawings.has(file)) {
       const opening = this.app.vault.read(file).then((svg) => ({
-        file, svg, strokes: parse(svg), dirty: false, pendingSave: Promise.resolve(),
+        file, svg, strokes: parse(svg), edits: [], pendingSave: Promise.resolve(),
       })).catch((error) => {
         this.drawings.delete(file);
         throw error;
@@ -143,9 +143,9 @@ module.exports = class BetterDraw extends Plugin {
     if (!drawing) return;
     drawing.pendingSave = drawing.pendingSave.then(async () => {
       try {
-        if (drawing.dirty) return;
+        if (drawing.edits.length) return;
         const svg = await this.app.vault.read(file);
-        if (drawing.dirty || svg === drawing.svg) return;
+        if (drawing.edits.length || svg === drawing.svg) return;
         drawing.strokes = parse(svg);
         drawing.svg = svg;
         this.app.workspace.trigger("betterdraw:changed", drawing);
@@ -158,17 +158,20 @@ module.exports = class BetterDraw extends Plugin {
 
   saveDrawing(drawing) {
     drawing.pendingSave = drawing.pendingSave.then(async () => {
-      const strokes = drawing.strokes;
-      const svg = serialize(strokes);
-      if (!drawing.dirty) return;
+      const edits = drawing.edits.slice();
+      if (!edits.length) return;
       const vault = this.app.vault;
       try {
-        await vault.process(drawing.file, (current) => {
-          if (current !== drawing.svg) throw new Error("Drawing changed on disk");
-          return svg;
+        const svg = await vault.process(drawing.file, (current) => {
+          const strokes = parse(current);
+          for (const edit of edits) edit(strokes);
+          return serialize(strokes);
         });
         drawing.svg = svg;
-        drawing.dirty = drawing.strokes !== strokes;
+        drawing.edits.splice(0, edits.length);
+        drawing.strokes = parse(svg);
+        for (const edit of drawing.edits) edit(drawing.strokes);
+        this.app.workspace.trigger("betterdraw:changed", drawing);
       } catch {
         new Notice("BetterDraw could not save this SVG. The next edit will retry.");
       }
@@ -218,9 +221,9 @@ class DrawingView extends MarkdownRenderChild {
       }
     };
 
-    const update = (next) => {
-      this.drawing.strokes = next;
-      this.drawing.dirty = true;
+    const update = (edit) => {
+      edit(this.drawing.strokes);
+      this.drawing.edits.push(edit);
       this.plugin.app.workspace.trigger("betterdraw:changed", this.drawing);
       this.plugin.saveDrawing(this.drawing);
     };
@@ -229,7 +232,12 @@ class DrawingView extends MarkdownRenderChild {
       this.registerDomEvent(el, "click", action);
     };
     button("Undo stroke", () => {
-      if (strokes().length) update(strokes().slice(0, -1));
+      const prefix = serialize(strokes());
+      const count = strokes().length;
+      if (!count) return;
+      update((current) => {
+        if (serialize(current.slice(0, count)) === prefix) current.splice(count - 1, 1);
+      });
     });
 
     const point = (event) => {
@@ -259,10 +267,10 @@ class DrawingView extends MarkdownRenderChild {
       const end = point(event);
       const last = draft[draft.length - 1];
       if (end[0] !== last[0] || end[1] !== last[1]) draft.push(end);
-      const next = [...strokes(), draft];
+      const completed = draft;
       draft = null;
       pointer = null;
-      update(next);
+      update((current) => current.push(completed));
     });
     const cancel = (event) => {
       if (event.pointerId !== pointer) return;

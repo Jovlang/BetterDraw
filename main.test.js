@@ -65,6 +65,7 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
       contents.set(file, update(contents.get(file)));
       writes++;
       this.emit("modify", file);
+      return contents.get(file);
     },
   });
   const workspace = new EventEmitter();
@@ -148,6 +149,13 @@ test("vault SVG insertion, shared editing, retry, reload, and invalid references
   await copy.view.drawing.pendingSave;
   assert.equal(writes, 3);
   assert.deepEqual(normalize(codec.parse(contents.get(file))), []);
+
+  first.canvas.pointerdown(point(50, 60));
+  first.canvas.pointerup(point(50, 60));
+  contents.set(file, codec.serialize([[[70, 80]]]));
+  vault.emit("modify", file);
+  await first.view.drawing.pendingSave;
+  assert.deepEqual(normalize(codec.parse(contents.get(file))), [[[70, 80]], [[50, 60]]]);
 
   assert.match((await render("BetterDraw/missing.svg")).root.text, /missing/);
   assert.match((await render("../outside.svg")).root.text, /vault-relative/);
